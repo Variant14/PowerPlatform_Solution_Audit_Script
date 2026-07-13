@@ -1,88 +1,118 @@
-# ==============================================================
-# Dataverse Solution Component Inventory Script - Change Summary
-# ==============================================================
-#
-# Purpose:
-# This script inventories Dataverse solution components and resolves
-# component types, display names, and logical names where possible.
-#
-# The previous version had issues where some components were shown as
-# "Unknown", missing names, or incorrect component types. The fixes below
-# improve component type resolution reliability.
-#
-#
-# --------------------------------------------------------------
+# Dataverse Solution Component Inventory Script
+
+## Overview
+
+This PowerShell script inventories **Microsoft Dataverse solution components** and resolves:
+
+- Component types
+- Display names
+- Logical names
+- Metadata information where available
+
+The script helps analyze solution contents by identifying components that exist within a Dataverse environment and provides better visibility during solution auditing and ALM processes.
+
+---
+
+# Change Summary
+
+## Improvements Applied
+
+The previous version had issues where some solution components were displayed as:
+
+- `Unknown`
+- Missing display names
+- Incorrect component types
+
+This version improves component type detection and name resolution reliability.
+
+---
+
 # Additional Component Support Added
-# --------------------------------------------------------------
-#
-# Added mappings/resolution support for:
-#
-# - Mail Merge Template
-# - Team Template
-# - Entity Key
-# - Privilege
-# - Attribute Image Configuration
-# - Entity Image Configuration
-# - Entity Relationship
-#
-# These use Dataverse metadata where possible.
-#
-#
-# --------------------------------------------------------------
+
+The script now includes support for additional Dataverse solution component types:
+
+| Component | Resolution Support |
+|------------|-------------------|
+| Mail Merge Template | Added |
+| Team Template | Added |
+| Entity Key | Added |
+| Privilege | Added |
+| Attribute Image Configuration | Added |
+| Entity Image Configuration | Added |
+| Entity Relationship | Added |
+
+These components use Dataverse metadata and entity lookups where possible.
+
+---
+
 # Known Limitations
-# --------------------------------------------------------------
-#
-# Some solution components do not have standalone records with names.
-# These will correctly show the ComponentType but no DisplayName.
-#
-# Examples:
-#
-# - Ribbon Customization
-# - Ribbon Command
-# - Ribbon Rule
-# - Ribbon Diff
-# - Relationship sub-components
-# - Role Privileges
-# - Field Permissions
-# - SLA Items
-# - Routing Rule Items
-#
-#
-# --------------------------------------------------------------
+
+Some Dataverse solution components do not have standalone records or queryable metadata objects.
+
+For these components, the script can correctly identify the **ComponentType**, but a **DisplayName** may not be available.
+
+Examples:
+
+- Ribbon Customization
+- Ribbon Command
+- Ribbon Rule
+- Ribbon Diff
+- Relationship sub-components
+- Role Privileges
+- Field Permissions
+- SLA Items
+- Routing Rule Items
+
+---
+
 # AI Component Limitation
-# --------------------------------------------------------------
-#
-# Component Types:
-#
-#   400 - AI Project Type
-#   401 - AI Project
-#
-# are valid Dataverse component types.
-#
-# However, the underlying Dataverse table/schema could not be confirmed
-# through public metadata documentation.
-#
-# These components are intentionally not mapped to avoid incorrect
-# entity lookups.
-#
-# Diagnostic output can be used to identify their actual backing entity
-# within the environment.
-#
-#
-# --------------------------------------------------------------
-# Overall Improvements
-# --------------------------------------------------------------
-#
-# The script now:
-#
-# Resolves component types independently from Dataverse labels
-# Prevents SCF metadata from overriding known mappings
-# Handles newer component types correctly
-# Supports large numeric component IDs
-# Resolves more entity-backed components automatically
-# Provides accurate ComponentType values for all solution components
-#
-# Name resolution remains dependent on whether the component has a
-# queryable Dataverse record or metadata object.
-#
-# ==============================================================
+
+The following Dataverse component types are valid:
+
+| Component Type | Description |
+|---------------|-------------|
+| 400 | AI Project Type |
+| 401 | AI Project |
+
+However, the underlying Dataverse table/schema could not be confirmed through available public metadata documentation.
+
+These components are intentionally not mapped to avoid incorrect entity lookups.
+
+Diagnostic output can be used to identify the actual backing entity within a specific environment.
+
+---
+
+# Key Improvements
+
+The updated script provides:
+
+ Independent component type resolution  
+ Protection against SCF metadata overriding known mappings  
+ Support for newer Dataverse component types  
+ Handling of large numeric component identifiers  
+ Automatic resolution of more entity-backed components  
+ More accurate ComponentType identification  
+ Improved solution inventory reporting  
+
+---
+
+# Name Resolution Behavior
+
+Display name resolution depends on whether the component has:
+
+- A queryable Dataverse record
+- Available metadata information
+- A supported entity mapping
+
+Components without an underlying record will still be identified by their correct component type, but may not contain a display name.
+
+---
+
+# Compatibility
+
+Designed for:
+
+- Microsoft Dataverse
+- Power Platform Solutions
+- Dynamics 365 environments
+- Power Platform ALM auditing scenarios
