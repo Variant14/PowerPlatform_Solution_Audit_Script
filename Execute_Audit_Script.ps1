@@ -1,92 +1,3 @@
-# ==============================================================
-# Dataverse Solution Component Inventory Script - Change Summary
-# ==============================================================
-#
-# Purpose:
-# This script inventories Dataverse solution components and resolves
-# component types, display names, and logical names where possible.
-#
-# The previous version had issues where some components were shown as
-# "Unknown", missing names, or incorrect component types. The fixes below
-# improve component type resolution reliability.
-#
-#
-# --------------------------------------------------------------
-# Additional Component Support Added
-# --------------------------------------------------------------
-#
-# Added mappings/resolution support for:
-#
-# - Mail Merge Template
-# - Team Template
-# - Entity Key
-# - Privilege
-# - Attribute Image Configuration
-# - Entity Image Configuration
-# - Entity Relationship
-#
-# These use Dataverse metadata where possible.
-#
-#
-# --------------------------------------------------------------
-# Known Limitations
-# --------------------------------------------------------------
-#
-# Some solution components do not have standalone records with names.
-# These will correctly show the ComponentType but no DisplayName.
-#
-# Examples:
-#
-# - Ribbon Customization
-# - Ribbon Command
-# - Ribbon Rule
-# - Ribbon Diff
-# - Relationship sub-components
-# - Role Privileges
-# - Field Permissions
-# - SLA Items
-# - Routing Rule Items
-#
-#
-# --------------------------------------------------------------
-# AI Component Limitation
-# --------------------------------------------------------------
-#
-# Component Types:
-#
-#   400 - AI Project Type
-#   401 - AI Project
-#
-# are valid Dataverse component types.
-#
-# However, the underlying Dataverse table/schema could not be confirmed
-# through public metadata documentation.
-#
-# These components are intentionally not mapped to avoid incorrect
-# entity lookups.
-#
-# Diagnostic output can be used to identify their actual backing entity
-# within the environment.
-#
-#
-# --------------------------------------------------------------
-# Overall Improvements
-# --------------------------------------------------------------
-#
-# The script now:
-#
-# Resolves component types independently from Dataverse labels
-# Prevents SCF metadata from overriding known mappings
-# Handles newer component types correctly
-# Supports large numeric component IDs
-# Resolves more entity-backed components automatically
-# Provides accurate ComponentType values for all solution components
-#
-# Name resolution remains dependent on whether the component has a
-# queryable Dataverse record or metadata object.
-#
-# ==============================================================
-
 $conn = Get-CrmConnection -InteractiveMode
 
 $componentTypeMap = @{
@@ -322,6 +233,34 @@ return $null
 
 
 # --------------------------------------------------------------
+# Helper: safely read a property that may not exist on a CrmRecord
+# (some Xrm.Tooling objects throw instead of returning $null when a
+# property wasn't requested/hydrated, so a plain $obj.Prop access is
+# not safe to use directly)
+# --------------------------------------------------------------
+function Get-SafeProperty {
+
+param(
+    $InputObject,
+    [string]$PropertyName
+)
+
+if ($null -eq $InputObject) { return $null }
+
+if ($InputObject.PSObject -and
+    $InputObject.PSObject.Properties.Match($PropertyName).Count -gt 0) {
+
+    return $InputObject.$PropertyName
+
+}
+
+return $null
+
+}
+
+
+
+# --------------------------------------------------------------
 # Preload SCF (Solution Component Framework) Type Definitions
 # --------------------------------------------------------------
 Write-Host "Retrieving SCF (Solution Component Framework) type definitions..." `
@@ -508,10 +447,32 @@ $fetch = @"
 "@
 
 
-$results = Get-CrmRecordsByFetch `
-    -conn $conn `
-    -Fetch $fetch `
-    -AllRows
+try {
+
+    $results = Get-CrmRecordsByFetch `
+        -conn $conn `
+        -Fetch $fetch `
+        -AllRows
+
+}
+catch {
+
+    Write-Host "FATAL: Failed to retrieve solution components - cannot continue: $($_.Exception.Message)" `
+        -ForegroundColor Red
+
+    return
+
+}
+
+
+if ($null -eq $results -or $null -eq $results.CrmRecords -or $results.CrmRecords.Count -eq 0) {
+
+    Write-Host "FATAL: No solution components were returned - nothing to export." `
+        -ForegroundColor Red
+
+    return
+
+}
 
 
 Write-Host "Retrieved $($results.CrmRecords.Count) solution components" `
@@ -850,8 +811,13 @@ if ($componentEntityMap.ContainsKey("Site Map") -and
 
     $siteMapObjectIdsSeen = $results.CrmRecords |
         Where-Object {
+
+            $ctProp = Get-SafeProperty -InputObject $_ -PropertyName 'componenttype_Property'
+            $ctTypeId = if ($ctProp) { Get-RawOptionSetInt $ctProp } else { $null }
+
             $_.componenttype -eq "Site Map" -or
-            ($_.objectid -and $componentTypeMap[(Get-RawOptionSetInt $_.componenttype_Property)] -eq "Site Map")
+            ($_.objectid -and $ctTypeId -and $componentTypeMap[$ctTypeId] -eq "Site Map")
+
         } |
         Select-Object -ExpandProperty objectid -Unique
 
@@ -1116,10 +1082,11 @@ $output = foreach ($item in $results.CrmRecords) {
     $typeName = $null
 
 
-    if ($item.PSObject.Properties.Match('componenttype_Property').Count -gt 0 -and
-        $item.componenttype_Property) {
+    $ctPropertyValue = Get-SafeProperty -InputObject $item -PropertyName 'componenttype_Property'
 
-        $typeId = Get-RawOptionSetInt $item.componenttype_Property
+    if ($ctPropertyValue) {
+
+        $typeId = Get-RawOptionSetInt $ctPropertyValue
 
     }
 
@@ -1255,29 +1222,69 @@ $output |
 # Export CSV
 # --------------------------------------------------------------
 
-$OutputPath = "C:\Temp\SolutionComponents.csv"
+$DefaultFileName = "SolutionComponents_{0}.csv" -f (Get-Date -Format "yyyyMMdd_HHmmss")
+$DefaultFolder    = "C:\Temp"
 
-$exportFolder = Split-Path $OutputPath
+$userFileName = Read-Host "Enter a file name for the export (press Enter to use default: $DefaultFileName)"
 
-if (!(Test-Path $exportFolder)) {
+if ([string]::IsNullOrWhiteSpace($userFileName)) {
 
-    New-Item `
-        -Path $exportFolder `
-        -ItemType Directory `
-        -Force |
-        Out-Null
+    $userFileName = $DefaultFileName
+
+}
+
+# Allow the user to type just a file name, a relative path, or a full
+# path - if they gave just a name, drop it into the default folder.
+if ([System.IO.Path]::IsPathRooted($userFileName)) {
+
+    $OutputPath = $userFileName
+
+}
+else {
+
+    if (-not $userFileName.ToLower().EndsWith(".csv")) {
+
+        $userFileName = "$userFileName.csv"
+
+    }
+
+    $OutputPath = Join-Path $DefaultFolder $userFileName
 
 }
 
 
-# Export details
-$output |
-    Export-Csv `
-        -Path $OutputPath `
-        -NoTypeInformation `
-        -Encoding UTF8
+$exportFolder = Split-Path $OutputPath
 
-Write-Host ""
-Write-Host "Full detail exported to:"
-Write-Host $OutputPath `
-    -ForegroundColor Green
+try {
+
+    if ($exportFolder -and !(Test-Path $exportFolder)) {
+
+        New-Item `
+            -Path $exportFolder `
+            -ItemType Directory `
+            -Force |
+            Out-Null
+
+    }
+
+
+    # Export details
+    $output |
+        Export-Csv `
+            -Path $OutputPath `
+            -NoTypeInformation `
+            -Encoding UTF8
+
+    Write-Host ""
+    Write-Host "Full detail exported to:"
+    Write-Host $OutputPath `
+        -ForegroundColor Green
+
+}
+catch {
+
+    Write-Host ""
+    Write-Host "FATAL: Failed to export CSV to '$OutputPath': $($_.Exception.Message)" `
+        -ForegroundColor Red
+
+}
